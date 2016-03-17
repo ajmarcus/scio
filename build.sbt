@@ -193,6 +193,7 @@ lazy val scioBigQuery: Project = Project(
     description := "Scio add-on for Google BigQuery",
     libraryDependencies ++= Seq(
       dataflowSdkDependency,
+      "com.google.apis" % "google-api-services-bigquery" % "v2-rev275-1.21.0",
       "commons-io" % "commons-io" % commonsIoVersion,
       "org.slf4j" % "slf4j-api" % slf4jVersion,
       "joda-time" % "joda-time" % jodaTimeVersion,
