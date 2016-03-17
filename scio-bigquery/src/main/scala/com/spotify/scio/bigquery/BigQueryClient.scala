@@ -60,16 +60,6 @@ object BigQueryUtil {
   def parseSchema(schemaString: String): TableSchema =
     new JsonObjectParser(new JacksonFactory).parseAndClose(new StringReader(schemaString), classOf[TableSchema])
 
-  /** Extract tables from a SQL query. */
-  def extractTables(sqlQuery: String): Set[TableReference] = {
-    val matcher = BigQueryUtil.QUERY_TABLE_SPEC.matcher(sqlQuery)
-    val b = Set.newBuilder[TableReference]
-    while (matcher.find()) {
-      b += BigQueryIO.parseTableSpec(matcher.group())
-    }
-    b.result()
-  }
-
 }
 
 /** A query job that may delay execution. */
@@ -179,7 +169,9 @@ class BigQueryClient private (private val projectId: String, auth: Option[Either
   /** Execute a query and save results into a temporary table. */
   def queryIntoTable(sqlQuery: String): QueryJob = {
     try {
-      val sourceTimes = BigQueryUtil.extractTables(sqlQuery).map(t => BigInt(getTable(t).getLastModifiedTime))
+      val sourceTimes = dryRun(sqlQuery)
+        .getStatistics.getQuery.getReferencedTables.asScala
+        .map(t => BigInt(getTable(t).getLastModifiedTime))
       val temp = getCacheDestinationTable(sqlQuery).get
       val time = BigInt(getTable(temp).getLastModifiedTime)
       if (sourceTimes.forall(_ < time)) {
@@ -310,6 +302,17 @@ class BigQueryClient private (private val projectId: String, auth: Option[Either
     }
     override val query: String = sqlQuery
     override val table: TableReference = destinationTable
+  }
+
+  private def dryRun(sqlQuery: String): Job = {
+    val queryConfig: JobConfigurationQuery = new JobConfigurationQuery()
+      .setQuery(sqlQuery)
+      .setFlattenResults(false)
+      .setPriority(PRIORITY)
+
+    val jobConfig = new JobConfiguration().setQuery(queryConfig).setDryRun(true)
+    val job = new Job().setConfiguration(jobConfig)
+    bigquery.jobs().insert(projectId, job).execute()
   }
 
   private def logJobStatistics(sqlQuery: String, job: Job): Unit = {
